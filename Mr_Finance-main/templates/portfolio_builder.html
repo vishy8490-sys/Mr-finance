@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Portfolio Builder — Mr Finance{% endblock %}
+{% block breadcrumb %}Portfolio Builder{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Portfolio Builder</h1>
+  <p class="page-subtitle">Construct and manage your equity portfolio</p>
+</div>
+
+<div class="grid-2">
+  <!-- Add Stock Panel -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-plus-circle"></i> Add Position</div>
+    </div>
+    <div id="add-msg"></div>
+
+    <div class="form-group">
+      <label class="form-label">Stock Symbol</label>
+      <!-- Searchable dropdown -->
+      <div style="position:relative">
+        <input type="text" id="symbol-search" class="form-control"
+               placeholder="Search symbol… e.g. AAPL"
+               autocomplete="off"
+               oninput="filterSymbols()"
+               onfocus="showDropdown()"
+               onblur="hideDropdown()"/>
+        <i class="fas fa-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none"></i>
+        <div id="symbol-dropdown" style="
+            display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;
+            background:var(--bg-elevated);border:1px solid var(--border-accent);
+            border-radius:var(--radius);z-index:200;max-height:200px;overflow-y:auto;
+            box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+          {% for sym in symbols %}
+          <div class="sym-option" data-value="{{ sym }}"
+               style="padding:9px 14px;cursor:pointer;font-size:13px;
+                      font-family:var(--font-mono);color:var(--accent-light);
+                      border-bottom:1px solid rgba(255,255,255,0.04);"
+               onmousedown="selectSymbol('{{ sym }}')">{{ sym }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      <!-- Hidden select keeps addStock() logic unchanged -->
+      <select id="symbol-select" style="display:none">
+        <option value="">— Select —</option>
+        {% for sym in symbols %}
+        <option value="{{ sym }}">{{ sym }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Quantity (shares)</label>
+      <input type="number" id="qty-input" class="form-control"
+             placeholder="e.g. 100" min="0.01" step="0.01"/>
+    </div>
+
+    <button class="btn btn-primary" onclick="addStock()">
+      <i class="fas fa-plus"></i> Add to Portfolio
+    </button>
+
+    <div class="divider"></div>
+    <div style="font-size:12px;color:var(--text-muted)">
+      <i class="fas fa-info-circle" style="color:var(--accent)"></i>&nbsp;
+      Available symbols: <strong style="color:var(--text-secondary)">{{ symbols|length }}</strong> stocks in dataset
+    </div>
+  </div>
+
+  <!-- Portfolio Summary Panel -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-chart-pie"></i> Portfolio Summary</div>
+    </div>
+    <div id="portfolio-stats">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Holdings Table -->
+<div class="chart-card" style="margin-top:20px">
+  <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+    <div class="card-title"><i class="fas fa-table"></i> Current Holdings</div>
+    <div id="holding-count" style="font-size:12px;color:var(--text-muted)"></div>
+  </div>
+  <div id="portfolio-table">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ── Searchable dropdown ── */
+function filterSymbols() {
+  const q = document.getElementById('symbol-search').value.toUpperCase();
+  document.querySelectorAll('.sym-option').forEach(el => {
+    el.style.display = el.dataset.value.includes(q) ? 'block' : 'none';
+  });
+  showDropdown();
+}
+function showDropdown() {
+  document.getElementById('symbol-dropdown').style.display = 'block';
+}
+function hideDropdown() {
+  setTimeout(() => { document.getElementById('symbol-dropdown').style.display = 'none'; }, 160);
+}
+function selectSymbol(sym) {
+  document.getElementById('symbol-search').value = sym;
+  document.getElementById('symbol-select').value = sym;
+  document.getElementById('symbol-dropdown').style.display = 'none';
+  document.querySelectorAll('.sym-option').forEach(el => {
+    el.style.background = el.dataset.value === sym ? 'rgba(99,102,241,0.12)' : '';
+    el.style.display = 'block';
+  });
+}
+
+/* ── Portfolio CRUD ── */
+async function loadPortfolio() {
+  const data  = await fetchJSON('/api/portfolio');
+  const items = data.portfolio || [];
+  document.getElementById('holding-count').textContent =
+    `${items.length} position${items.length !== 1 ? 's' : ''}`;
+
+  const tbody = document.getElementById('portfolio-table');
+  if (!items.length) {
+    tbody.innerHTML = `<div class="empty-state"><i class="fas fa-briefcase"></i><p>No positions yet. Add your first stock above.</p></div>`;
+  } else {
+    tbody.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Symbol</th><th>Quantity</th><th>Action</th></tr></thead>
+        <tbody>
+          ${items.map(p => `
+            <tr>
+              <td><span class="table-symbol">${p.symbol}</span></td>
+              <td><span class="table-qty">${parseFloat(p.quantity).toLocaleString('en-IN')}</span></td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteStock('${p.symbol}')">
+                <i class="fas fa-trash-alt"></i> Remove
+              </button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const m     = await fetchJSON('/api/metrics');
+  const stats = document.getElementById('portfolio-stats');
+  if (!items.length || !Object.keys(m).length) {
+    stats.innerHTML = `<div class="empty-state"><i class="fas fa-chart-pie"></i><p>Add stocks to see analytics</p></div>`;
+  } else {
+    const retColor = m.annual_return >= 0 ? 'var(--green)' : 'var(--red-light)';
+    stats.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="padding:14px;background:var(--bg-elevated);border-radius:8px">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:6px">ANNUAL RETURN</div>
+          <div style="font-family:var(--font-mono);font-size:22px;color:${retColor}">${m.annual_return >= 0 ? '+' : ''}${m.annual_return}%</div>
+        </div>
+        <div style="padding:14px;background:var(--bg-elevated);border-radius:8px">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:6px">VOLATILITY</div>
+          <div style="font-family:var(--font-mono);font-size:22px;color:#f59e0b">${m.volatility}%</div>
+        </div>
+        <div style="padding:14px;background:var(--bg-elevated);border-radius:8px">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:6px">SHARPE RATIO</div>
+          <div style="font-family:var(--font-mono);font-size:22px;color:var(--accent-light)">${m.sharpe_ratio}</div>
+        </div>
+        <div style="padding:14px;background:var(--bg-elevated);border-radius:8px">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:6px">MAX DRAWDOWN</div>
+          <div style="font-family:var(--font-mono);font-size:22px;color:var(--red-light)">${m.max_drawdown}%</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:14px;background:var(--bg-elevated);border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;color:var(--text-muted)">POSITIONS</span>
+        <span style="font-family:var(--font-mono);font-size:16px">${items.length}</span>
+      </div>
+    `;
+  }
+}
+
+async function addStock() {
+  const sym = document.getElementById('symbol-select').value;
+  const qty = document.getElementById('qty-input').value;
+  if (!sym) { showAlert('add-msg', 'Please select a stock symbol', 'error'); return; }
+  if (!qty || parseFloat(qty) <= 0) { showAlert('add-msg', 'Please enter a valid quantity', 'error'); return; }
+  const res = await fetchJSON('/api/portfolio/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: sym, quantity: qty })
+  });
+  if (res.success) {
+    showAlert('add-msg', `${sym} added successfully`, 'success');
+    document.getElementById('qty-input').value = '';
+    document.getElementById('symbol-search').value = '';
+    document.getElementById('symbol-select').value = '';
+    loadPortfolio();
+  } else {
+    showAlert('add-msg', res.message, 'error');
+  }
+}
+
+async function deleteStock(symbol) {
+  await fetchJSON('/api/portfolio/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol })
+  });
+  loadPortfolio();
+}
+
+loadPortfolio();
+</script>
+{% endblock %}

@@ -1,0 +1,98 @@
+import functions_framework
+import os
+from flask import request, jsonify
+import google.generativeai as genai
+import json
+
+# app = Flask(__name__)
+
+# 1. SECURITY: Load API key from environment variable
+# Run this in terminal before starting app: export GOOGLE_API_KEY="your_actual_key"
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    raise ValueError("No API key found. Please set the GOOGLE_API_KEY environment variable.")
+
+genai.configure(api_key=api_key)
+
+# 2. MODEL: Use a valid model name (e.g., gemini-1.5-flash)
+# Note: 'files/...' references expire after 48 hours usually. Ensure the file exists.
+FILE_ID = "files/0o8o493fkhu3" 
+
+# @app.route('/generate_quiz', methods=['POST'])
+@functions_framework.http
+def generate_quiz(request):
+    data = request.get_json()
+    # subject = data.get('subject')
+    # unit = data.get('unit')
+    num = data.get('num')
+
+    if not num:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    try:
+        # 3. ROBUSTNESS: Configure the model to force JSON output
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            generation_config={"response_mime_type": "application/json"}
+        )
+
+        # Retrieve file reference (ensure this file handles validity checks in real app)
+        file_ref = genai.get_file(FILE_ID)
+
+        # 4. PROMPT ENGINEERING: Ask for a SINGLE JSON object
+        prompt = f"""
+        Create a {num} questions MCQ quiz based on using the provided file.
+        
+        Return a SINGLE JSON object with this exact schema:
+        {{
+            "questions": [
+                {{
+                    "id": 1,
+                    "question": "Question text here",
+                    "options": {{ "A": "...", "B": "...", "C": "...", "D": "..." }}
+                }}
+            ],
+            "answer_key": {{
+                "1": "A",
+                "2": "B"
+            }}
+        }}
+        """
+
+        response = model.generate_content([file_ref, prompt])
+
+        # 5. PARSING: Direct JSON parsing (No splitting required)
+        # Because we used response_mime_type="application/json", response.text is guaranteed to be clean JSON.
+        quiz_data = json.loads(response.text)
+
+        return jsonify(quiz_data)
+
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# if __name__ == '__main__':
+#     app.run(debug=True)
+
+# @functions_framework.http
+# def hello_http(request):
+#     """HTTP Cloud Function.
+#     Args:
+#         request (flask.Request): The request object.
+#         <https://flask.palletsprojects.com/en/1.1.x/api/#incoming-request-data>
+#     Returns:
+#         The response text, or any set of values that can be turned into a
+#         Response object using `make_response`
+#         <https://flask.palletsprojects.com/en/1.1.x/api/#flask.make_response>.
+#     """
+#     request_json = request.get_json(silent=True)
+#     request_args = request.args
+
+#     if request_json and 'name' in request_json:
+#         name = request_json['name']
+#     elif request_args and 'name' in request_args:
+#         name = request_args['name']
+#     else:
+#         name = 'World'
+#     return 'Hello {}!'.format(name)

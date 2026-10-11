@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Mr Finance{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"/>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="app-wrapper">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <i class="fas fa-chart-line" style="color:#fff"></i>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">QuantRisk</span>
+        <span class="brand-sub">PRO</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a href="/dashboard" class="nav-item {% if request.path == '/dashboard' %}active{% endif %}">
+        <i class="fas fa-th-large"></i><span>Dashboard</span>
+      </a>
+      <a href="/portfolio-builder" class="nav-item {% if request.path == '/portfolio-builder' %}active{% endif %}">
+        <i class="fas fa-briefcase"></i><span>Portfolio Builder</span>
+      </a>
+
+      <div class="nav-section-label">Analytics</div>
+      <a href="/risk-analytics" class="nav-item {% if request.path == '/risk-analytics' %}active{% endif %}">
+        <i class="fas fa-shield-alt"></i><span>Risk Analytics</span>
+      </a>
+
+      <div class="nav-section-label">Intelligence</div>
+      <a href="/ai-evaluation" class="nav-item {% if request.path == '/ai-evaluation' %}active{% endif %}">
+        <i class="fas fa-brain"></i><span>AI Evaluation</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+        <div class="user-avatar">{{ session.get('username','U')[0].upper() }}</div>
+        <div class="user-details" style="min-width:0">
+          <span class="user-name">{{ session.get('username','User') }}</span>
+          <span class="user-role">Analyst</span>
+        </div>
+      </div>
+      <a href="/logout" class="logout-btn" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main-content">
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+        <div class="breadcrumb">
+          <span class="breadcrumb-root">QuantRisk</span>
+          <i class="fas fa-chevron-right"></i>
+          <span class="breadcrumb-page">{% block breadcrumb %}Dashboard{% endblock %}</span>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <div class="top-bar-time" id="live-time"></div>
+      </div>
+    </header>
+
+    <div class="page-content">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+</div>
+
+<script>
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+function updateTime() {
+  const now = new Date();
+  document.getElementById('live-time').textContent =
+    now.toLocaleTimeString('en-IN', { hour12: false }) + ' IST';
+}
+setInterval(updateTime, 1000);
+updateTime();
+</script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

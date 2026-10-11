@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}AI Evaluation — Mr Finance{% endblock %}
+{% block breadcrumb %}AI Evaluation{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">AI Portfolio Evaluation</h1>
+  <p class="page-subtitle">9-factor machine learning assessment — Gradient Boosting with calibrated confidence</p>
+</div>
+
+<!-- Top row: verdict + score gauge -->
+<div class="grid-2" style="margin-bottom:20px">
+
+  <!-- Verdict card -->
+  <div id="ai-result-container">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Score gauge + feature importance -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-gauge-high"></i> Health Score Breakdown</div>
+    </div>
+    <div id="score-gauge" style="text-align:center;margin-bottom:18px"></div>
+    <div id="feature-importance">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 9-criterion breakdown table -->
+<div class="chart-card" style="margin-bottom:20px">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-list-check"></i> 9-Factor Portfolio Assessment</div>
+  </div>
+  <div id="breakdown-table">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- Raw metrics reference -->
+<div class="chart-card">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-table"></i> Portfolio Metrics Reference</div>
+  </div>
+  <div id="metrics-ref">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadAI() {
+  const [ai, m] = await Promise.all([
+    fetchJSON('/api/ai-evaluation'),
+    fetchJSON('/api/metrics')
+  ]);
+
+  /* ── 1. Verdict card ── */
+  const resultEl = document.getElementById('ai-result-container');
+  if (ai.label === 'No Portfolio') {
+    resultEl.innerHTML = `<div class="card"><div class="empty-state">
+      <i class="fas fa-brain"></i>
+      <p>Build a portfolio first to get AI evaluation.</p>
+      <a href="/portfolio-builder" class="btn btn-primary" style="margin-top:16px">Build Portfolio</a>
+    </div></div>`;
+    document.getElementById('score-gauge').innerHTML = '';
+    document.getElementById('feature-importance').innerHTML = '<div class="empty-state" style="padding:20px"><p>No data</p></div>';
+    document.getElementById('breakdown-table').innerHTML = '<div class="empty-state"><p>No portfolio data</p></div>';
+    document.getElementById('metrics-ref').innerHTML = '<div class="empty-state"><p>No portfolio data</p></div>';
+    return;
+  }
+
+  const isStrong   = ai.is_strong;
+  const isModerate = ai.label === 'Moderate Portfolio';
+  const scoreColor = ai.score >= 65 ? 'var(--green)' :
+                     ai.score >= 40 ? '#f59e0b'      : 'var(--red-light)';
+  const borderCol  = ai.score >= 65 ? 'rgba(16,185,129,0.35)' :
+                     ai.score >= 40 ? 'rgba(245,158,11,0.35)' : 'rgba(239,68,68,0.35)';
+  const emoji      = ai.score >= 65 ? '🚀' : ai.score >= 40 ? '⚡' : '⚠️';
+  const cls        = isStrong ? 'strong' : 'weak';
+
+  resultEl.innerHTML = `
+    <div class="ai-result-card ${cls}" style="border-color:${borderCol}">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--text-muted)">AI ASSESSMENT</div>
+      <div style="font-size:52px;margin:14px 0 8px">${emoji}</div>
+      <div class="ai-label" style="color:${scoreColor};font-size:26px">${ai.label}</div>
+
+      <div style="margin:18px 0;display:flex;justify-content:center;gap:32px">
+        <div style="text-align:center">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:4px">HEALTH SCORE</div>
+          <div style="font-family:var(--font-mono);font-size:36px;font-weight:700;color:${scoreColor}">${ai.score}</div>
+          <div style="font-size:10px;color:var(--text-muted)">out of 100</div>
+        </div>
+        <div style="width:1px;background:var(--border)"></div>
+        <div style="text-align:center">
+          <div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:4px">CONFIDENCE</div>
+          <div style="font-family:var(--font-mono);font-size:36px;font-weight:700;color:${scoreColor}">${ai.probability}%</div>
+          <div style="font-size:10px;color:var(--text-muted)">model certainty</div>
+        </div>
+      </div>
+
+      <!-- Score progress bar -->
+      <div style="margin:0 16px 16px">
+        <div style="height:8px;background:var(--bg-elevated);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${ai.score}%;background:linear-gradient(90deg,${scoreColor},${scoreColor}88);border-radius:4px;transition:width 1s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:4px">
+          <span>0 — Weak</span><span>50 — Moderate</span><span>100 — Strong</span>
+        </div>
+      </div>
+
+      <span class="badge ${isStrong ? 'badge-success' : isModerate ? 'badge-yellow' : 'badge-danger'}"
+            style="font-size:12px;padding:5px 14px">
+        <i class="fas fa-${isStrong ? 'check-circle' : isModerate ? 'exclamation-circle' : 'times-circle'}"></i>
+        ${ai.score >= 65 ? 'Exceeds strong portfolio criteria' :
+          ai.score >= 40 ? 'Partially meets strong criteria'  :
+                           'Below strong portfolio threshold'}
+      </span>
+    </div>`;
+
+  /* ── 2. Score gauge (visual ring) ── */
+  const gaugeEl = document.getElementById('score-gauge');
+  const sc = ai.score;
+  const dash = 2 * Math.PI * 52;
+  const filled = dash * (sc / 100);
+  gaugeEl.innerHTML = `
+    <svg width="130" height="130" viewBox="0 0 120 120" style="transform:rotate(-90deg)">
+      <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-elevated)" stroke-width="10"/>
+      <circle cx="60" cy="60" r="52" fill="none" stroke="${scoreColor}" stroke-width="10"
+              stroke-dasharray="${filled.toFixed(1)} ${(dash - filled).toFixed(1)}"
+              stroke-linecap="round" style="transition:stroke-dasharray 1.2s ease"/>
+    </svg>
+    <div style="margin-top:-72px;font-family:var(--font-mono);font-size:28px;font-weight:700;color:${scoreColor}">${sc}</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Portfolio Score</div>`;
+
+  /* ── 3. Feature importance ── */
+  const featEl  = document.getElementById('feature-importance');
+  const feats   = ai.feature_importance || {};
+  const maxFeat = Math.max(...Object.values(feats), 0.001);
+  featEl.innerHTML = `<div style="font-size:10px;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase">Feature Importance</div>` +
+    Object.entries(feats).sort((a,b) => b[1]-a[1]).map(([name, val]) => `
+      <div class="feat-bar-wrap">
+        <div class="feat-bar-label">
+          <span style="color:var(--text-secondary);font-size:11px">${name}</span>
+          <span style="font-family:var(--font-mono);color:var(--accent-light);font-size:11px">${(val*100).toFixed(1)}%</span>
+        </div>
+        <div class="feat-bar">
+          <div class="feat-bar-fill" style="width:${(val/maxFeat*100).toFixed(1)}%"></div>
+        </div>
+      </div>`).join('');
+
+  /* ── 4. 9-factor breakdown table ── */
+  const brkEl = document.getElementById('breakdown-table');
+  if (ai.breakdown && ai.breakdown.length) {
+    brkEl.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Factor</th>
+            <th>Value</th>
+            <th>Score (0–100)</th>
+            <th>Weight</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ai.breakdown.map(b => {
+            const barColor = b.score >= 70 ? 'var(--green)' :
+                             b.score >= 40 ? '#f59e0b'      : 'var(--red-light)';
+            return `<tr>
+              <td style="font-weight:600;color:var(--text-primary)">${b.name}</td>
+              <td style="font-family:var(--font-mono);color:var(--text-secondary)">${b.value}</td>
+              <td style="min-width:160px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="flex:1;height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden">
+                    <div style="height:100%;width:${b.score}%;background:${barColor};border-radius:3px;transition:width 0.8s ease"></div>
+                  </div>
+                  <span style="font-family:var(--font-mono);font-size:11px;color:${barColor};min-width:36px">${b.score}%</span>
+                </div>
+              </td>
+              <td style="color:var(--text-muted);font-size:12px">${b.weight}x</td>
+              <td>
+                <span class="badge ${b.pass ? 'badge-success' : 'badge-danger'}">
+                  <i class="fas fa-${b.pass ? 'check' : 'times'}"></i>
+                  ${b.pass ? 'Pass' : 'Fail'}
+                </span>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:12px;font-size:11px;color:var(--text-muted);padding:0 4px">
+        <i class="fas fa-info-circle" style="color:var(--accent)"></i>
+        Score ≥ 50% = Pass for that factor. Overall health score is a weighted average of all 9 factors.
+      </div>`;
+  } else {
+    brkEl.innerHTML = '<div class="empty-state"><p>No breakdown available</p></div>';
+  }
+
+  /* ── 5. Raw metrics reference ── */
+  const metricsEl = document.getElementById('metrics-ref');
+  if (!m || !Object.keys(m).length) {
+    metricsEl.innerHTML = '<div class="empty-state"><p>No metrics available</p></div>';
+  } else {
+    const rows = [
+      { name: 'Annual Return',        val: m.annual_return + '%',        desc: 'Annualized performance' },
+      { name: 'Volatility',           val: m.volatility    + '%',        desc: 'Annualized std deviation' },
+      { name: 'Sharpe Ratio',         val: m.sharpe_ratio,               desc: 'Return per unit of total risk' },
+      { name: 'Max Drawdown',         val: m.max_drawdown  + '%',        desc: 'Worst peak-to-trough decline' },
+      { name: 'VaR (95%)',            val: m.var_95        + '%',        desc: 'Daily loss exceeded only 5% of days' },
+      { name: 'Total Portfolio Return', val: (m.portfolio_return_pct||0)+'%', desc: 'Cumulative return since inception' },
+    ];
+    metricsEl.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Metric</th><th>Value</th><th>Description</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td style="font-weight:600">${r.name}</td>
+              <td style="font-family:var(--font-mono);color:var(--accent-light)">${r.val}</td>
+              <td style="color:var(--text-muted);font-size:12px">${r.desc}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+}
+loadAI();
+</script>
+{% endblock %}

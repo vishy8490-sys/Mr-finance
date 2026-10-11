@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Mr Finance{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Portfolio Dashboard</h1>
+  <p class="page-subtitle">Real-time portfolio analytics and risk monitoring</p>
+</div>
+
+<!-- Metric Cards -->
+<div class="metrics-grid" id="metrics-grid">
+  <div class="loading"><div class="spinner"></div></div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid-2" style="margin-bottom:20px">
+  <div class="chart-card">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-chart-line"></i> Portfolio Value</div>
+    </div>
+    <div class="chart-container" id="chart-portfolio"></div>
+  </div>
+  <div class="chart-card">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-th"></i> Correlation Heatmap</div>
+    </div>
+    <div class="chart-container" id="chart-correlation"></div>
+  </div>
+</div>
+
+<!-- AI Score -->
+<div class="chart-card">
+  <div class="card-header">
+    <div class="card-title"><i class="fas fa-brain"></i> AI Portfolio Score</div>
+  </div>
+  <div id="ai-mini-result" class="loading"><div class="spinner"></div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadDashboard() {
+  const m = await fetchJSON('/api/metrics');
+  const grid = document.getElementById('metrics-grid');
+
+  if (!m || Object.keys(m).length === 0) {
+    grid.innerHTML = `<div class="alert alert-info" style="grid-column:1/-1">
+      <i class="fas fa-info-circle"></i>
+      No portfolio yet. <a href="/portfolio-builder" class="auth-link">Build your portfolio</a> to see analytics.
+    </div>`;
+  } else {
+    const retCls = m.annual_return >= 0 ? 'positive' : 'negative';
+    const shCls  = m.sharpe_ratio >= 1 ? 'positive' : m.sharpe_ratio < 0 ? 'negative' : '';
+    grid.innerHTML = `
+      <div class="metric-card">
+        <div class="metric-icon"><i class="fas fa-chart-line"></i></div>
+        <div class="metric-label">Annual Return</div>
+        <div class="metric-value ${retCls}">${m.annual_return >= 0 ? '+' : ''}${m.annual_return}%</div>
+        <div class="metric-sub">Annualized performance</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b"><i class="fas fa-wind"></i></div>
+        <div class="metric-label">Volatility</div>
+        <div class="metric-value">${m.volatility}%</div>
+        <div class="metric-sub">Annualized std deviation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon" style="background:rgba(6,182,212,0.1);color:#06b6d4"><i class="fas fa-balance-scale"></i></div>
+        <div class="metric-label">Sharpe Ratio</div>
+        <div class="metric-value ${shCls}">${m.sharpe_ratio}</div>
+        <div class="metric-sub">Risk-adjusted return</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:#ef4444"><i class="fas fa-arrow-trend-down"></i></div>
+        <div class="metric-label">Max Drawdown</div>
+        <div class="metric-value negative">${m.max_drawdown}%</div>
+        <div class="metric-sub">Peak-to-trough decline</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:#ef4444"><i class="fas fa-shield-halved"></i></div>
+        <div class="metric-label">VaR (95%)</div>
+        <div class="metric-value negative">${m.var_95}%</div>
+        <div class="metric-sub">Daily Value at Risk</div>
+      </div>
+    `;
+  }
+
+  const [pv, corr, ai] = await Promise.all([
+    fetchJSON('/api/chart/portfolio-value'),
+    fetchJSON('/api/chart/correlation'),
+    fetchJSON('/api/ai-evaluation')
+  ]);
+  renderPlotly('chart-portfolio', pv);
+  renderPlotly('chart-correlation', corr);
+
+  const aiDiv = document.getElementById('ai-mini-result');
+  if (ai.label === 'No Portfolio') {
+    aiDiv.innerHTML = `<div class="empty-state"><i class="fas fa-brain"></i><p>Add stocks to get AI evaluation</p></div>`;
+  } else {
+    const sc = ai.score || 0;
+    const scoreColor = sc >= 65 ? 'var(--green)' : sc >= 40 ? '#f59e0b' : 'var(--red-light)';
+    const emoji = sc >= 65 ? '🚀' : sc >= 40 ? '⚡' : '⚠️';
+    const r = 38, circ = 2 * Math.PI * r;
+    const filled = circ * (sc / 100);
+    aiDiv.innerHTML = `
+      <div style="padding:16px 20px;text-align:center">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--text-muted);margin-bottom:14px;text-transform:uppercase">AI Assessment</div>
+
+        <!-- Gauge: SVG ring with score number overlaid using position:relative -->
+        <div style="position:relative;display:inline-block;width:110px;height:110px;margin-bottom:8px">
+          <svg width="110" height="110" viewBox="0 0 90 90"
+               style="position:absolute;top:0;left:0;transform:rotate(-90deg)">
+            <circle cx="45" cy="45" r="${r}" fill="none"
+                    stroke="var(--bg-elevated)" stroke-width="9"/>
+            <circle cx="45" cy="45" r="${r}" fill="none"
+                    stroke="${scoreColor}" stroke-width="9"
+                    stroke-dasharray="${filled.toFixed(1)} ${(circ - filled).toFixed(1)}"
+                    stroke-linecap="round"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;
+                      align-items:center;justify-content:center;gap:2px">
+            <span style="font-size:20px;line-height:1">${emoji}</span>
+            <span style="font-family:var(--font-mono);font-size:22px;font-weight:700;
+                         color:${scoreColor};line-height:1">${sc}</span>
+            <span style="font-size:9px;color:var(--text-muted);letter-spacing:1px">/ 100</span>
+          </div>
+        </div>
+
+        <div style="font-size:15px;font-weight:700;color:${scoreColor};margin-bottom:12px">${ai.label}</div>
+
+        <div style="display:flex;justify-content:center;gap:24px;margin-bottom:14px">
+          <div>
+            <div style="font-size:9px;letter-spacing:1px;color:var(--text-muted);margin-bottom:2px">CONFIDENCE</div>
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:600;color:${scoreColor}">${ai.probability}%</div>
+          </div>
+        </div>
+
+        <a href="/ai-evaluation" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center">
+          View Full Analysis →
+        </a>
+      </div>
+    `;
+  }
+}
+loadDashboard();
+</script>
+{% endblock %}

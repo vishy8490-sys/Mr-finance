@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — Mr Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"/>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="brand-icon" style="width:52px;height:52px;font-size:22px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#6366f1,#06b6d4);border-radius:14px;margin:0 auto 14px;box-shadow:0 0 32px rgba(99,102,241,0.3)">
+        <i class="fas fa-chart-line" style="color:#fff"></i>
+      </div>
+      <h1>Mr Finance</h1>
+      <p>Portfolio Risk Management Platform</p>
+    </div>
+
+    <h2 class="auth-title">Sign In</h2>
+    <div id="msg-box"></div>
+
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input type="text" id="username" class="form-control" placeholder="Enter username" autocomplete="username"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="password" class="form-control" placeholder="Enter password" autocomplete="current-password"/>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLogin()">
+      <i class="fas fa-sign-in-alt"></i> Sign In
+    </button>
+
+    <div class="auth-footer">
+      Don't have an account? <a href="/register" class="auth-link">Register</a>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value;
+  if (!u || !p) { showMsg('Please fill all fields', 'error'); return; }
+  const res = await fetch('/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u, password: p })
+  });
+  const data = await res.json();
+  if (data.success) { window.location = '/dashboard'; }
+  else { showMsg(data.message || 'Invalid credentials', 'error'); }
+}
+function showMsg(msg, type) {
+  const icons = { error: 'exclamation-circle', success: 'check-circle' };
+  document.getElementById('msg-box').innerHTML =
+    `<div class="alert alert-${type}"><i class="fas fa-${icons[type]}"></i>${msg}</div>`;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
